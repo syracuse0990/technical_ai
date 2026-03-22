@@ -9,6 +9,7 @@ use App\Services\ChunkingService;
 use App\Services\DeepSeekService;
 use App\Services\EmbeddingService;
 use App\Services\TextExtractorService;
+use App\Services\WebSocketService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +42,12 @@ class ProcessDocument implements ShouldQueue
         // Skip AI processing for file types that can't be read/extracted
         if ($this->isUnreadableFile()) {
             $this->file->update(['status' => 'completed']);
+
+            app(WebSocketService::class)->fileStatusChanged(
+                $this->file->id,
+                'completed',
+                $this->file->original_name,
+            );
 
             Log::info('Skipped AI processing for unreadable file type', [
                 'file_id' => $this->file->id,
@@ -155,6 +162,12 @@ class ProcessDocument implements ShouldQueue
 
             $this->file->update(['status' => 'completed']);
 
+            app(WebSocketService::class)->fileStatusChanged(
+                $this->file->id,
+                'completed',
+                $this->file->original_name,
+            );
+
             Log::info('Document processed successfully', [
                 'file_id' => $this->file->id,
                 'chunks_created' => count($chunks),
@@ -165,6 +178,12 @@ class ProcessDocument implements ShouldQueue
                 'status' => 'failed',
                 'error_message' => mb_substr($e->getMessage(), 0, 500),
             ]);
+
+            app(WebSocketService::class)->fileStatusChanged(
+                $this->file->id,
+                'failed',
+                $this->file->original_name,
+            );
 
             Log::error('Document processing failed', [
                 'file_id' => $this->file->id,

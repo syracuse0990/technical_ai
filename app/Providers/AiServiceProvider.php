@@ -8,6 +8,7 @@ use App\Services\EmbeddingService;
 use App\Services\KimiService;
 use App\Services\TextExtractorService;
 use App\Services\VectorSearchService;
+use App\Services\WebSocketService;
 use Illuminate\Support\ServiceProvider;
 
 class AiServiceProvider extends ServiceProvider
@@ -20,6 +21,7 @@ class AiServiceProvider extends ServiceProvider
         $this->app->singleton(TextExtractorService::class);
         $this->app->singleton(ChunkingService::class);
         $this->app->singleton(VectorSearchService::class);
+        $this->app->singleton(WebSocketService::class);
     }
 
     public function boot(): void

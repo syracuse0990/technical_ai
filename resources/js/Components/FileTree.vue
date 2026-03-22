@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch, inject } from 'vue';
 import axios from 'axios';
 import TreeNode from './TreeNode.vue';
 import FileIcon from './FileIcon.vue';
@@ -12,6 +12,45 @@ const expandedFolders = reactive(new Set());
 
 const settings = useSettingsStore();
 const isPublicMode = computed(() => settings.visibility === 'public');
+
+// ── WebSocket: listen for file status changes ──
+const fileActivityEvents = inject('fileActivityEvents', ref([]));
+let lastTreeEventId = 0;
+
+function updateFileStatusInTree(fileId, newStatus) {
+    // Update in root files
+    const rootFile = rootFiles.value.find(f => f.id === fileId);
+    if (rootFile) { rootFile.status = newStatus; return; }
+    // Update in folder children recursively
+    function walkFolders(folders) {
+        for (const folder of folders) {
+            if (folder.files) {
+                const file = folder.files.find(f => f.id === fileId);
+                if (file) { file.status = newStatus; return true; }
+            }
+            if (folder.children && walkFolders(folder.children)) return true;
+        }
+        return false;
+    }
+    walkFolders(tree.value);
+}
+
+watch(fileActivityEvents, (events) => {
+    if (!events.length) return;
+    const newEvents = events.filter(e => e.id > lastTreeEventId);
+    if (!newEvents.length) return;
+    lastTreeEventId = events[events.length - 1].id;
+
+    for (const evt of newEvents) {
+        if (evt.event === 'file.status') {
+            updateFileStatusInTree(evt.file_id, evt.status);
+        }
+        // Refresh full tree for structural changes (file added/deleted, folder created/deleted)
+        if (['file.uploaded', 'file.deleted', 'folder.created', 'folder.deleted'].includes(evt.event)) {
+            fetchTree();
+        }
+    }
+}, { deep: true });
 
 // Context menu
 const contextMenu = ref({ show: false, x: 0, y: 0, type: '', item: null });
@@ -474,7 +513,7 @@ onUnmounted(() => {
         <div class="flex-1 overflow-y-auto px-1 py-1"
              @dragover.prevent="onDragOver($event, null)"
              @dragleave="onDragLeave"
-             @drop="onDrop($event, null)">
+             @drop.stop="onDrop($event, null)">
             <!-- Loading -->
             <div v-if="loading" class="flex items-center justify-center py-8">
                 <svg class="h-5 w-5 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">

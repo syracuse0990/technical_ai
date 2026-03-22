@@ -3,7 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import FileTree from '@/Components/FileTree.vue';
 import FileIcon from '@/Components/FileIcon.vue';
 import { Head } from '@inertiajs/vue3';
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, inject, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { useSettingsStore } from '@/stores/settings';
 
@@ -83,6 +83,24 @@ const mobilePanel = ref('tree');
 
 // View mode persisted via Pinia
 const settings = useSettingsStore();
+
+// ── WebSocket: real-time file activity ──────────
+const fileActivityEvents = inject('fileActivityEvents', ref([]));
+let lastHandledEventId = 0;
+
+watch(fileActivityEvents, (events) => {
+    if (!events.length) return;
+    const newEvents = events.filter((e) => e.id > lastHandledEventId);
+    if (!newEvents.length) return;
+    lastHandledEventId = events[events.length - 1].id;
+
+    for (const evt of newEvents) {
+        // Auto-update file status in the currently selected file
+        if (evt.event === 'file.status' && selectedFile.value && selectedFile.value.id === evt.file_id) {
+            selectedFile.value = { ...selectedFile.value, status: evt.status };
+        }
+    }
+}, { deep: true });
 
 // Delete confirmation modal
 const deleteModal = ref({ show: false, type: '', item: null });

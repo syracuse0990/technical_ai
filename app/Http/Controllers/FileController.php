@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ProcessDocument;
 use App\Models\File;
+use App\Services\WebSocketService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -51,6 +52,13 @@ class FileController extends Controller
             ]);
 
             ProcessDocument::dispatch($file);
+
+            if ($visibility === 'public') {
+                app(WebSocketService::class)->fileUploaded(
+                    $file->only('id', 'original_name', 'mime_type', 'file_size', 'folder_id'),
+                    $request->user()->name,
+                );
+            }
 
             $uploaded[] = $file;
         }
@@ -157,9 +165,16 @@ class FileController extends Controller
             abort(403);
         }
 
+        $fileData = $file->only('id', 'original_name', 'mime_type', 'file_size', 'folder_id', 'visibility');
+        $userName = $request->user()->name;
+
         Storage::disk('wasabi')->delete($file->file_path);
         $file->chunks()->delete();
         $file->delete();
+
+        if ($fileData['visibility'] === 'public') {
+            app(WebSocketService::class)->fileDeleted($fileData, $userName);
+        }
 
         return response()->json(['message' => 'File deleted.']);
     }

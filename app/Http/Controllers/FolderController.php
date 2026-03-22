@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Folder;
+use App\Services\WebSocketService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -68,6 +69,13 @@ class FolderController extends Controller
 
         $folder->load('allChildren', 'files');
 
+        if (($validated['visibility'] ?? 'private') === 'public') {
+            app(WebSocketService::class)->folderCreated(
+                $folder->only('id', 'name', 'parent_id'),
+                $request->user()->name,
+            );
+        }
+
         return response()->json($folder, 201);
     }
 
@@ -119,7 +127,14 @@ class FolderController extends Controller
             abort(403);
         }
 
+        $folderData = $folder->only('id', 'name', 'parent_id', 'visibility');
+        $userName = $request->user()->name;
+
         $folder->delete();
+
+        if ($folderData['visibility'] === 'public') {
+            app(WebSocketService::class)->folderDeleted($folderData, $userName);
+        }
 
         return response()->json(['message' => 'Folder deleted.']);
     }

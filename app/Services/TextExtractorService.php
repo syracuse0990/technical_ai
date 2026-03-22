@@ -10,7 +10,10 @@ use Smalot\PdfParser\Parser as PdfParser;
 
 class TextExtractorService
 {
-    public function __construct(protected KimiService $kimiService) {}
+    public function __construct(
+        protected KimiService $kimiService,
+        protected DeepSeekService $deepSeek,
+    ) {}
 
     /**
      * Extract text from an uploaded file based on its MIME type.
@@ -32,6 +35,8 @@ class TextExtractorService
 
     protected function extractFromPdf(string $filePath): string
     {
+        $rawText = null;
+
         // 1. Try smalot/pdfparser for text-based PDFs
         try {
             $parser = new PdfParser;
@@ -40,17 +45,203 @@ class TextExtractorService
 
             $cleanText = preg_replace('/[\x00-\x1F\x7F]+/', '', trim($text));
             if (! empty($cleanText) && mb_strlen($cleanText) > 20) {
-                return $text;
+                if ($this->hasReasonableSpacing($cleanText)) {
+                    return $text;
+                }
+                $rawText = $text; // Keep for spacing repair
+                Log::info('PdfParser text has poor spacing, will attempt repair', [
+                    'file' => basename($filePath),
+                ]);
             }
         } catch (\Exception $e) {
-            Log::info('PdfParser failed, falling back to KIMI', [
+            Log::info('PdfParser failed, trying alternatives', [
                 'file' => basename($filePath),
                 'error' => $e->getMessage(),
             ]);
         }
 
-        // 2. For scanned/image PDFs, use KIMI vision OCR
-        return $this->ocrPdfViaKimi($filePath);
+        // 2. Try pdftotext binary (poppler-utils) if available
+        try {
+            $text = $this->extractPdfViaPdftotext($filePath);
+            if ($text !== null) {
+                return $text;
+            }
+        } catch (\Exception $e) {
+            // pdftotext not available, skip
+        }
+
+        // 3. Try KIMI file-extract API
+        try {
+            $kimiText = $this->ocrPdfViaKimi($filePath);
+            if (! empty(trim($kimiText))) {
+                if ($this->hasReasonableSpacing($kimiText)) {
+                    return $kimiText;
+                }
+                // KIMI also returned poorly-spaced text; prefer it over smalot
+                $rawText = $kimiText;
+            }
+        } catch (\Exception $e) {
+            Log::info('KIMI PDF extraction failed', [
+                'file' => basename($filePath),
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // 4. If we have text with poor spacing, try DeepSeek to fix it
+        if ($rawText && config('ai.deepseek_api_key')) {
+            try {
+                $fixed = $this->repairSpacing($rawText);
+                if (! empty(trim($fixed))) {
+                    return $fixed;
+                }
+            } catch (\Exception $e) {
+                Log::warning('Spacing repair failed, returning raw text', [
+                    'file' => basename($filePath),
+                    'error' => $e->getMessage(),
+                ]);
+
+                return $rawText; // Better than nothing
+            }
+        }
+
+        if ($rawText) {
+            return $rawText;
+        }
+
+        throw new \RuntimeException('No text could be extracted from the PDF document.');
+    }
+
+    /**
+     * Check if extracted text has reasonable word spacing.
+     * Presentation-style PDFs often have spaces stripped between words.
+     */
+    protected function hasReasonableSpacing(string $text): bool
+    {
+        // Split into "words" by whitespace and count those that are abnormally long.
+        // Normal English words rarely exceed 18 chars; concatenated words are much longer.
+        $words = preg_split('/\s+/', $text);
+        $longWords = 0;
+        $totalWords = 0;
+
+        foreach ($words as $word) {
+            // Only check alphabetic-heavy tokens (skip numbers, symbols)
+            if (mb_strlen($word) < 5 || preg_match_all('/[a-zA-Z]/', $word) < 5) {
+                continue;
+            }
+            $totalWords++;
+            if (mb_strlen($word) > 18) {
+                $longWords++;
+            }
+        }
+
+        if ($totalWords < 10) {
+            return true; // Too few words to judge
+        }
+
+        $ratio = $longWords / $totalWords;
+
+        Log::info('Spacing check', [
+            'totalWords' => $totalWords,
+            'longWords' => $longWords,
+            'ratio' => round($ratio, 3),
+            'pass' => $ratio < 0.10,
+        ]);
+
+        // If more than 10% of words are abnormally long, spacing is broken
+        return $ratio < 0.10;
+    }
+
+    /**
+     * Use DeepSeek to repair collapsed word spacing in extracted text.
+     * Processes text in chunks to stay within API token limits.
+     */
+    protected function repairSpacing(string $text): string
+    {
+        $systemPrompt = <<<'PROMPT'
+You are a text repair tool. The input text was extracted from a PDF and has missing spaces between words.
+Your ONLY job is to insert spaces where they are missing between concatenated words.
+Rules:
+- Do NOT change, rephrase, summarize, translate, or reorder any content.
+- Do NOT add any commentary, headers, or explanations.
+- Preserve all line breaks and paragraph structure.
+- Output ONLY the corrected text with proper word spacing.
+PROMPT;
+
+        // Split into chunks of ~2000 chars at line boundaries
+        $lines = explode("\n", $text);
+        $chunks = [];
+        $current = '';
+
+        foreach ($lines as $line) {
+            if (mb_strlen($current) + mb_strlen($line) > 2000 && $current !== '') {
+                $chunks[] = $current;
+                $current = '';
+            }
+            $current .= ($current !== '' ? "\n" : '').$line;
+        }
+        if ($current !== '') {
+            $chunks[] = $current;
+        }
+
+        $repaired = [];
+        foreach ($chunks as $i => $chunk) {
+            try {
+                $fixed = $this->deepSeek->chat(
+                    prompt: "Fix the word spacing in this text:\n\n".$chunk,
+                    temperature: 0.1,
+                    systemPrompt: $systemPrompt,
+                );
+                $repaired[] = trim($fixed);
+            } catch (\Exception $e) {
+                Log::warning('Spacing repair failed for chunk', [
+                    'chunk' => $i,
+                    'error' => $e->getMessage(),
+                ]);
+                $repaired[] = $chunk; // Keep original chunk on failure
+            }
+        }
+
+        return implode("\n", $repaired);
+    }
+
+    /**
+     * Try extracting text via the pdftotext binary (poppler-utils).
+     */
+    protected function extractPdfViaPdftotext(string $filePath): ?string
+    {
+        // Check for pdftotext on PATH or common Windows locations
+        $binary = $this->findPdftotext();
+        if ($binary === null) {
+            return null;
+        }
+
+        $escapedPath = escapeshellarg($filePath);
+        $escapedBinary = escapeshellarg($binary);
+        $output = shell_exec("{$escapedBinary} -layout {$escapedPath} - 2>&1");
+
+        $cleanOutput = preg_replace('/[\x00-\x1F\x7F]+/', '', trim($output ?? ''));
+        if (! empty($cleanOutput) && mb_strlen($cleanOutput) > 20) {
+            return $output;
+        }
+
+        return null;
+    }
+
+    /**
+     * Locate the pdftotext binary.
+     */
+    protected function findPdftotext(): ?string
+    {
+        // Check if pdftotext is on PATH
+        $which = PHP_OS_FAMILY === 'Windows'
+            ? trim(shell_exec('where pdftotext 2>NUL') ?? '')
+            : trim(shell_exec('which pdftotext 2>/dev/null') ?? '');
+
+        if (! empty($which) && file_exists(explode("\n", $which)[0])) {
+            return explode("\n", $which)[0];
+        }
+
+        return null;
     }
 
     protected function ocrPdfViaKimi(string $filePath): string
