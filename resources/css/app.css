@@ -1,0 +1,161 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    html {
+        scroll-behavior: smooth;
+    }
+}
+
+@layer components {
+    .auth-glass {
+        @apply bg-white/80 backdrop-blur-xl border border-white/40 shadow-2xl;
+    }
+
+    .input-modern {
+        @apply w-full rounded-xl border-0 bg-white/60 px-4 py-3 text-gray-800
+               placeholder-gray-400 shadow-sm ring-1 ring-inset ring-gray-200
+               transition-all duration-300
+               focus:bg-white focus:ring-2 focus:ring-agri-500 focus:shadow-lg focus:shadow-agri-500/10;
+    }
+
+    .btn-primary {
+        @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r
+               from-agri-600 to-agri-500 px-6 py-3 text-sm font-semibold text-white
+               shadow-lg shadow-agri-500/30 transition-all duration-300
+               hover:from-agri-700 hover:to-agri-600 hover:shadow-xl hover:shadow-agri-500/40
+               hover:-translate-y-0.5 active:translate-y-0
+               focus:outline-none focus:ring-2 focus:ring-agri-500 focus:ring-offset-2
+               disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0;
+    }
+
+    .label-modern {
+        @apply block text-sm font-medium text-gray-700 mb-1;
+    }
+
+    .link-modern {
+        @apply text-sm font-medium text-agri-600 transition-colors duration-200
+               hover:text-agri-700 focus:outline-none focus:underline;
+    }
+
+    /* Chat table styling */
+    .chat-table-wrapper {
+        position: relative;
+        margin: 0.75rem 0;
+        overflow-x: auto;
+        border-radius: 0.5rem;
+        border: 1px solid #e2e8f0;
+    }
+
+    .chat-table-wrapper table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8125rem;
+        margin: 0;
+    }
+
+    .chat-table-wrapper thead th {
+        background: #f8fafc;
+        font-weight: 600;
+        text-align: left;
+        padding: 0.625rem 0.875rem;
+        border-bottom: 2px solid #e2e8f0;
+        white-space: nowrap;
+    }
+
+    .chat-table-wrapper tbody td {
+        padding: 0.5rem 0.875rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .chat-table-wrapper tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    .chat-table-wrapper tbody tr:hover td {
+        background: #f0fdf4;
+    }
+
+    .chat-table-copy {
+        position: absolute;
+        top: 0.375rem;
+        right: 0.375rem;
+        padding: 0.3rem;
+        border-radius: 0.375rem;
+        background: white;
+        border: 1px solid #e2e8f0;
+        color: #9ca3af;
+        cursor: pointer;
+        opacity: 0;
+        transition: all 0.15s;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .chat-table-wrapper:hover .chat-table-copy {
+        opacity: 1;
+    }
+
+    .chat-table-copy:hover {
+        color: #059669;
+        border-color: #a7f3d0;
+        background: #ecfdf5;
+    }
+
+    .chat-table-copy.copied {
+        color: #059669;
+        border-color: #a7f3d0;
+        background: #ecfdf5;
+        opacity: 1;
+    }
+}
+
+/* Dark mode chat tables */
+.dark .chat-table-wrapper {
+    border-color: #374151;
+}
+
+.dark .chat-table-wrapper thead th {
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom-color: #374151;
+}
+
+.dark .chat-table-wrapper tbody td {
+    border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+.dark .chat-table-wrapper tbody tr:hover td {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.dark .chat-table-copy {
+    background: #1f2937;
+    border-color: #374151;
+    color: #6b7280;
+}
+
+.dark .chat-table-copy:hover,
+.dark .chat-table-copy.copied {
+    color: #34d399;
+    border-color: #065f46;
+    background: #064e3b;
+}
+
+/* Override prose table margins */
+.prose .chat-table-wrapper table {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.prose .chat-table-wrapper table thead th {
+    padding: 0.625rem 0.875rem;
+}
+
+.prose .chat-table-wrapper table tbody td {
+    padding: 0.5rem 0.875rem;
+}
