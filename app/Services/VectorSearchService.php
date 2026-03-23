@@ -53,9 +53,31 @@ class VectorSearchService
             $results = [];
         }
 
+        // Always supplement with keyword search for chunks that have no embeddings
+        $keywordResults = ! empty($keywords)
+            ? $this->keywordFallbackSearch($keywords, $topicId, true)
+            : [];
+
         if (empty($results) && ! empty($keywords)) {
             Log::info('Vector search empty, trying keyword fallback', ['keywords' => $keywords]);
-            $results = $this->keywordFallbackSearch($keywords, $topicId);
+            $keywordResults = array_merge($keywordResults, $this->keywordFallbackSearch($keywords, $topicId, false));
+        }
+
+        // Merge: add keyword results that aren't already in vector results
+        if (! empty($keywordResults)) {
+            $existingChunkIds = array_column($results, 'chunk_index');
+            $existingFileIds = array_column($results, 'file_id');
+            $existingKeys = array_map(fn ($r) => $r['file_id'].'-'.$r['chunk_index'], $results);
+
+            foreach ($keywordResults as $kr) {
+                $key = $kr['file_id'].'-'.$kr['chunk_index'];
+                if (! in_array($key, $existingKeys)) {
+                    $results[] = $kr;
+                    $existingKeys[] = $key;
+                }
+            }
+
+            $results = array_slice($results, 0, $this->topK);
         }
 
         return $results;
@@ -176,7 +198,7 @@ class VectorSearchService
     /**
      * @return array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>
      */
-    protected function keywordFallbackSearch(array $keywords, ?int $topicId = null): array
+    protected function keywordFallbackSearch(array $keywords, ?int $topicId = null, bool $embeddingNullOnly = false): array
     {
         if (empty($keywords)) {
             return [];
@@ -190,14 +212,25 @@ class VectorSearchService
             $bindings[] = '%'.str_replace(['%', '_'], ['\%', '\_'], $kw).'%';
         }
 
+        // Also match by filename
+        $fileNameParts = [];
+        foreach ($keywords as $kw) {
+            $fileNameParts[] = 'LOWER(f.original_name) LIKE ?';
+            $bindings[] = '%'.str_replace(['%', '_'], ['\%', '\_'], $kw).'%';
+        }
+
         $sql = '
             SELECT dc.id, dc.file_id, dc.content, dc.chunk_index, dc.metadata,
                    f.original_name AS source_name,
                    0.5 AS combined_score
             FROM document_chunks dc
             LEFT JOIN files f ON f.id = dc.file_id
-            WHERE ('.implode(' OR ', $whereParts).')
+            WHERE ('.implode(' OR ', array_merge($whereParts, $fileNameParts)).')
         ';
+
+        if ($embeddingNullOnly) {
+            $sql .= ' AND dc.embedding IS NULL';
+        }
 
         if ($topicId) {
             $sql .= ' AND dc.topic_id = ?';
