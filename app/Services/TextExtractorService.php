@@ -296,19 +296,9 @@ PROMPT;
 
     protected function extractWordElement(mixed $element): string
     {
-        $text = '';
-
-        if (method_exists($element, 'getText')) {
-            $text .= $element->getText().' ';
-        }
-
-        if (method_exists($element, 'getElements')) {
-            foreach ($element->getElements() as $child) {
-                $text .= $this->extractWordElement($child);
-            }
-        }
-
+        // Handle Table elements first (they also have getElements)
         if ($element instanceof Table) {
+            $text = '';
             foreach ($element->getRows() as $row) {
                 $cells = [];
                 foreach ($row->getCells() as $cell) {
@@ -319,6 +309,26 @@ PROMPT;
                     $cells[] = trim($cellText);
                 }
                 $text .= implode(' | ', $cells)."\n";
+            }
+
+            return $text;
+        }
+
+        $text = '';
+
+        if (method_exists($element, 'getText')) {
+            $result = $element->getText();
+            if (is_string($result)) {
+                return $result.' ';
+            }
+            if (is_object($result)) {
+                return $this->extractWordElement($result);
+            }
+        }
+
+        if (method_exists($element, 'getElements')) {
+            foreach ($element->getElements() as $child) {
+                $text .= $this->extractWordElement($child);
             }
         }
 

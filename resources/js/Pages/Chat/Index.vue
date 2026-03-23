@@ -2,42 +2,43 @@
     <AuthenticatedLayout>
         <div class="flex h-[calc(100vh-4rem)] overflow-hidden">
             <!-- Sidebar: Conversations -->
-            <div class="w-64 shrink-0 hidden md:flex flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
-                <div class="border-b border-gray-200 p-3 dark:border-gray-800">
-                    <button @click="showNewChat = true" class="w-full rounded-lg bg-agri-600 px-3 py-2 text-sm font-medium text-white hover:bg-agri-700 transition">
-                        + New Chat
+            <div class="w-[260px] shrink-0 hidden md:flex flex-col border-r border-gray-200/60 bg-gray-50 dark:border-gray-800/60 dark:bg-gray-900/80 overflow-hidden">
+                <div class="p-3">
+                    <button @click="showNewChat = true" class="w-full flex items-center justify-center gap-2 rounded-xl bg-agri-600 px-3 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-agri-700 active:scale-[0.98] transition-all">
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+                        New Chat
                     </button>
                 </div>
-                <div class="flex-1 overflow-y-auto p-2 space-y-1">
+                <div class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
                     <div v-for="conv in conversations" :key="conv.id"
-                        class="group flex items-center rounded-lg text-sm transition"
-                        :class="activeConversation?.id === conv.id ? 'bg-agri-50 text-agri-700 dark:bg-agri-900/30 dark:text-agri-400' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white'">
-                        <Link :href="`/chat/${conv.id}`" class="flex-1 truncate px-3 py-2 font-medium">
+                        class="group flex items-center rounded-xl text-[13px] transition-all duration-150"
+                        :class="activeConversation?.id === conv.id ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-800 dark:text-white' : 'text-gray-600 hover:bg-white/60 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/50 dark:hover:text-white'">
+                        <Link :href="`/chat/${conv.id}`" class="flex-1 truncate px-3 py-2.5">
                             {{ conv.title }}
                         </Link>
                         <button @click.prevent="confirmDeleteConversation(conv)"
-                            class="shrink-0 mr-1 rounded p-1 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-500 transition">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            class="shrink-0 mr-2 rounded-lg p-1 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                     </div>
-                    <p v-if="conversations.length === 0" class="text-center text-xs text-gray-400 py-4">No conversations yet</p>
+                    <p v-if="conversations.length === 0" class="text-center text-xs text-gray-400 py-8">No conversations yet</p>
                 </div>
             </div>
 
             <!-- Main Chat Area -->
-            <div class="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden">
+            <div class="flex-1 flex flex-col bg-white dark:bg-gray-950 overflow-hidden">
                 <!-- Chat header -->
-                <div v-if="activeConversation" class="border-b border-gray-200 px-4 py-2 flex items-center justify-between dark:border-gray-800">
+                <div v-if="activeConversation" class="border-b border-gray-100 px-4 py-2.5 flex items-center justify-between dark:border-gray-800/60 bg-white/80 backdrop-blur-sm dark:bg-gray-950/80">
                     <div class="md:hidden">
-                        <select @change="navigateConversation($event.target.value)" class="rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                        <select @change="navigateConversation($event.target.value)" class="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white">
                             <option v-for="conv in conversations" :key="conv.id" :value="conv.id" :selected="conv.id === activeConversation?.id">{{ conv.title }}</option>
                         </select>
                     </div>
-                    <span class="hidden md:block text-sm text-gray-500 dark:text-gray-400 truncate">{{ activeConversation.title }}</span>
+                    <span class="hidden md:block text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{{ activeConversation.title }}</span>
                     <button @click="showSystemPrompt = !showSystemPrompt"
-                        class="rounded-lg px-2 py-1 text-xs transition"
-                        :class="activeConversation.system_prompt ? 'bg-agri-50 text-agri-700 dark:bg-agri-900/30 dark:text-agri-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        class="rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all"
+                        :class="activeConversation.system_prompt ? 'bg-agri-50 text-agri-700 dark:bg-agri-900/30 dark:text-agri-400' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-800'">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         Persona
                     </button>
                 </div>
@@ -56,84 +57,100 @@
                 </div>
 
                 <!-- Messages -->
-                <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4" @click="handleTableCopy">
+                <div ref="messagesContainer" class="flex-1 overflow-y-auto" @click="handleTableCopy">
                     <div v-if="!activeConversation" class="flex h-full items-center justify-center">
-                        <div class="text-center">
-                            <img src="/images/logo.png" alt="LeadsTech" class="h-16 w-16 mx-auto mb-4 rounded-full ring-2 ring-gray-200 dark:ring-gray-700 opacity-60" />
-                            <h2 class="text-xl font-semibold text-gray-500 dark:text-gray-400 mb-2">Ask me anything about your files</h2>
-                            <p class="text-sm text-gray-400 dark:text-gray-600 max-w-md mx-auto">I specialize in Plant Pathology, Entomology, Banana/Rice/Vegetable Science, Soil & Nutrition. I can search your documents and find relevant files.</p>
-                            <button @click="showNewChat = true" class="mt-4 md:hidden rounded-lg bg-agri-600 px-4 py-2 text-sm font-medium text-white hover:bg-agri-700 transition">+ New Chat</button>
+                        <div class="text-center px-6">
+                            <div class="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-agri-500 to-agri-600 shadow-lg shadow-agri-500/20">
+                                <img src="/images/logo.png" alt="LeadsTech" class="h-8 w-8 rounded-lg" />
+                            </div>
+                            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-1.5">How can I help you today?</h2>
+                            <p class="text-sm text-gray-400 dark:text-gray-500 max-w-sm mx-auto leading-relaxed">Ask about your uploaded documents — crops, pests, diseases, soil science, and more.</p>
+                            <button @click="showNewChat = true" class="mt-5 md:hidden rounded-xl bg-agri-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-agri-700 active:scale-[0.98] transition-all">+ New Chat</button>
                         </div>
                     </div>
 
-                    <div v-for="msg in allMessages" :key="msg.id || msg.tempId" class="flex" :class="msg.role === 'user' ? 'justify-end' : 'justify-start'">
-                        <div class="max-w-[80%] group/msg" :class="msg.role === 'assistant' ? 'flex gap-2.5' : ''">
-                            <img v-if="msg.role === 'assistant'" src="/images/logo.png" alt="AI" class="h-7 w-7 rounded-full shrink-0 mt-1 ring-1 ring-gray-200 dark:ring-gray-700" />
-                            <div class="min-w-0">
-                                <div class="rounded-xl px-4 py-3 text-sm"
-                                    :class="msg.role === 'user'
-                                        ? 'bg-agri-600 text-white rounded-br-sm'
-                                        : 'bg-white text-gray-800 dark:bg-gray-800 dark:text-gray-200 rounded-bl-sm border border-gray-200 dark:border-gray-700'">
-                                    <div v-if="msg.role === 'user'" class="whitespace-pre-wrap">{{ msg.content }}</div>
-                                    <div v-else class="prose prose-sm dark:prose-invert max-w-none" v-html="renderMarkdown(msg.content)"></div>
-                                    <span v-if="msg.streaming" class="inline-block w-1.5 h-4 ml-0.5 bg-agri-400 animate-pulse"></span>
+                    <div class="max-w-3xl mx-auto px-4 py-6 space-y-6">
+                        <div v-for="msg in allMessages" :key="msg.id || msg.tempId">
+                            <!-- User message -->
+                            <div v-if="msg.role === 'user'" class="flex justify-end">
+                                <div class="max-w-[75%] rounded-2xl rounded-br-md bg-agri-600 px-4 py-2.5 text-[14px] text-white leading-relaxed shadow-sm">
+                                    <div class="whitespace-pre-wrap">{{ msg.content }}</div>
                                 </div>
+                            </div>
 
-                                <!-- File cards attached to message -->
-                                <div v-if="getMessageFiles(msg).length" class="mt-2 space-y-1.5">
-                                    <div v-for="file in getMessageFiles(msg)" :key="file.id"
-                                        class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
-                                        <div class="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg" :class="fileIconBg(file.mime_type)">
-                                            <span class="text-xs font-bold text-white">{{ fileExt(file.original_name) }}</span>
-                                        </div>
-                                        <div class="min-w-0 flex-1">
-                                            <p class="text-xs font-medium text-gray-900 dark:text-white truncate">{{ file.original_name }}</p>
-                                            <p class="text-[10px] text-gray-400">{{ formatSize(file.file_size) }}</p>
-                                        </div>
-                                        <div class="flex shrink-0 gap-1">
-                                            <button @click="openFilePreview(file)"
-                                                class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-agri-600 dark:hover:bg-gray-700 transition" title="Preview">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                            </button>
-                                            <a :href="`/api/files/${file.id}/download`"
-                                                class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-agri-600 dark:hover:bg-gray-700 transition" title="Download">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                            </a>
+                            <!-- Assistant message -->
+                            <div v-else class="group/msg">
+                                <div class="flex gap-3">
+                                    <div class="shrink-0 mt-0.5">
+                                        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-agri-500 to-agri-600 shadow-sm">
+                                            <img src="/images/logo.png" alt="AI" class="h-4.5 w-4.5 rounded-sm" />
                                         </div>
                                     </div>
-                                </div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="text-[13px] leading-normal text-gray-700 dark:text-gray-300">
+                                            <div class="chat-prose" v-html="renderMarkdown(msg.content)"></div>
+                                            <span v-if="msg.streaming" class="inline-block w-0.5 h-4 ml-0.5 bg-agri-500 animate-pulse rounded-full"></span>
+                                        </div>
 
-                                <!-- Actions for assistant messages -->
-                                <div v-if="msg.role === 'assistant' && msg.content && !msg.streaming" class="flex items-center gap-1 mt-1 opacity-0 group-hover/msg:opacity-100 transition">
-                                    <button @click="copyMessage(msg.content)" class="rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white transition" title="Copy">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                                    </button>
-                                    <button v-if="msg.id" @click="sendFeedback(msg, 'up')"
-                                        class="rounded p-1 transition" :class="msg.feedback === 'up' ? 'text-emerald-500' : 'text-gray-400 hover:text-emerald-500'" title="Good response">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" /></svg>
-                                    </button>
-                                    <button v-if="msg.id" @click="sendFeedback(msg, 'down')"
-                                        class="rounded p-1 transition" :class="msg.feedback === 'down' ? 'text-red-500' : 'text-gray-400 hover:text-red-500'" title="Bad response">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" /></svg>
-                                    </button>
-                                    <span v-if="copiedId === (msg.id || msg.tempId)" class="text-[10px] text-emerald-500 ml-1">Copied!</span>
+                                        <!-- File cards -->
+                                        <div v-if="getMessageFiles(msg).length" class="mt-3 flex flex-wrap gap-2">
+                                            <div v-for="file in getMessageFiles(msg)" :key="file.id"
+                                                class="flex items-center gap-2.5 rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                                                <div class="shrink-0 flex h-7 w-7 items-center justify-center rounded-lg" :class="fileIconBg(file.mime_type)">
+                                                    <span class="text-[10px] font-bold text-white">{{ fileExt(file.original_name) }}</span>
+                                                </div>
+                                                <div class="min-w-0">
+                                                    <p class="text-xs font-medium text-gray-700 dark:text-gray-300 truncate max-w-[180px]">{{ file.original_name }}</p>
+                                                    <p class="text-[10px] text-gray-400">{{ formatSize(file.file_size) }}</p>
+                                                </div>
+                                                <div class="flex shrink-0 gap-0.5 ml-1">
+                                                    <button @click="openFilePreview(file)"
+                                                        class="rounded-lg p-1 text-gray-400 hover:text-agri-600 transition" title="Preview">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                                    </button>
+                                                    <a :href="`/api/files/${file.id}/download`"
+                                                        class="rounded-lg p-1 text-gray-400 hover:text-agri-600 transition" title="Download">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Actions -->
+                                        <div v-if="msg.content && !msg.streaming" class="flex items-center gap-0.5 mt-2 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+                                            <button @click="copyMessage(msg.content)" class="rounded-lg p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-gray-800 transition-all" title="Copy">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                            </button>
+                                            <button v-if="msg.id" @click="sendFeedback(msg, 'up')"
+                                                class="rounded-lg p-1.5 transition-all" :class="msg.feedback === 'up' ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'" title="Good response">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" /></svg>
+                                            </button>
+                                            <button v-if="msg.id" @click="sendFeedback(msg, 'down')"
+                                                class="rounded-lg p-1.5 transition-all" :class="msg.feedback === 'down' ? 'text-red-500 bg-red-50 dark:bg-red-900/20' : 'text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'" title="Bad response">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" /></svg>
+                                            </button>
+                                            <span v-if="copiedId === (msg.id || msg.tempId)" class="text-[10px] text-emerald-500 font-medium ml-1">Copied!</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- AI Thinking indicator -->
-                    <div v-if="isLoading && !streamingMessage" class="flex justify-start">
-                        <div class="flex gap-2.5">
-                            <img src="/images/logo.png" alt="AI" class="h-7 w-7 rounded-full shrink-0 mt-1 ring-1 ring-gray-200 dark:ring-gray-700 animate-pulse" />
-                            <div class="rounded-xl bg-white dark:bg-gray-800 rounded-bl-sm px-4 py-3 border border-gray-200 dark:border-gray-700">
-                                <div class="flex items-center gap-2">
-                                    <div class="flex gap-1">
-                                        <span class="h-2 w-2 rounded-full bg-agri-400 animate-bounce" style="animation-delay: 0ms"></span>
-                                        <span class="h-2 w-2 rounded-full bg-agri-400 animate-bounce" style="animation-delay: 150ms"></span>
-                                        <span class="h-2 w-2 rounded-full bg-agri-400 animate-bounce" style="animation-delay: 300ms"></span>
+                        <!-- AI Thinking indicator -->
+                        <div v-if="isLoading && !streamingMessage">
+                            <div class="flex gap-3">
+                                <div class="shrink-0 mt-0.5">
+                                    <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-agri-500 to-agri-600 shadow-sm animate-pulse">
+                                        <img src="/images/logo.png" alt="AI" class="h-4.5 w-4.5 rounded-sm" />
                                     </div>
-                                    <span class="text-xs text-gray-400 ml-1">Searching documents...</span>
+                                </div>
+                                <div class="flex items-center gap-2 py-2">
+                                    <div class="flex gap-1">
+                                        <span class="h-1.5 w-1.5 rounded-full bg-agri-400 animate-bounce" style="animation-delay: 0ms"></span>
+                                        <span class="h-1.5 w-1.5 rounded-full bg-agri-400 animate-bounce" style="animation-delay: 150ms"></span>
+                                        <span class="h-1.5 w-1.5 rounded-full bg-agri-400 animate-bounce" style="animation-delay: 300ms"></span>
+                                    </div>
+                                    <span class="text-xs text-gray-400">Thinking...</span>
                                 </div>
                             </div>
                         </div>
@@ -141,16 +158,19 @@
                 </div>
 
                 <!-- Input -->
-                <div v-if="activeConversation" class="border-t border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-                    <form @submit.prevent="sendMessage" class="flex gap-3">
-                        <input v-model="messageInput" type="text" placeholder="Ask about crops, pests, diseases, or say 'find me the file for...'"
-                            :disabled="isLoading"
-                            class="flex-1 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:border-agri-500 focus:outline-none disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
-                            @keydown.enter.prevent="sendMessage" />
-                        <button type="submit" :disabled="!messageInput.trim() || isLoading"
-                            class="rounded-lg bg-agri-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-agri-700 disabled:opacity-50 transition">
-                            Send
-                        </button>
+                <div v-if="activeConversation" class="border-t border-gray-100 bg-white px-4 py-3 dark:border-gray-800/60 dark:bg-gray-950">
+                    <form @submit.prevent="sendMessage" class="max-w-3xl mx-auto">
+                        <div class="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50/80 px-3 py-2 transition-all focus-within:border-agri-400 focus-within:bg-white focus-within:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:focus-within:border-agri-600 dark:focus-within:bg-gray-900">
+                            <input v-model="messageInput" type="text" placeholder="Message..."
+                                :disabled="isLoading"
+                                class="flex-1 border-0 bg-transparent px-1 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0 disabled:opacity-50 dark:text-white dark:placeholder-gray-500"
+                                @keydown.enter.prevent="sendMessage" />
+                            <button type="submit" :disabled="!messageInput.trim() || isLoading"
+                                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-agri-600 text-white transition-all hover:bg-agri-700 active:scale-95 disabled:opacity-30 disabled:hover:bg-agri-600">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
+                            </button>
+                        </div>
+                        <p class="mt-1.5 text-center text-[10px] text-gray-400 dark:text-gray-600">AI can make mistakes. Verify important information.</p>
                     </form>
                 </div>
             </div>
@@ -159,11 +179,11 @@
         <!-- New Chat Modal -->
         <div v-if="showNewChat" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="showNewChat = false">
             <div class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">New Conversation</h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Start a new chat. The AI will search across your uploaded files to find answers.</p>
-                <div class="flex justify-end gap-3">
-                    <button type="button" @click="showNewChat = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white transition">Cancel</button>
-                    <button @click="startChat" :disabled="newChatForm.processing" class="rounded-lg bg-agri-600 px-4 py-2 text-sm font-medium text-white hover:bg-agri-700 disabled:opacity-50 transition">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">New Conversation</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Start a new chat to search across your uploaded files.</p>
+                <div class="flex justify-end gap-2">
+                    <button type="button" @click="showNewChat = false" class="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800 transition-all">Cancel</button>
+                    <button @click="startChat" :disabled="newChatForm.processing" class="rounded-xl bg-agri-600 px-4 py-2 text-sm font-medium text-white hover:bg-agri-700 active:scale-[0.98] disabled:opacity-50 transition-all">
                         Start Chat
                     </button>
                 </div>
@@ -212,7 +232,18 @@
                             <p class="mt-2 text-xs text-gray-500">Loading preview...</p>
                         </div>
                     </div>
-                    <img v-if="isImage(previewFile.mime_type)"
+                    <SpreadsheetEditor v-if="isSpreadsheet(previewFile)"
+                        :file-id="previewFile.id"
+                        :can-edit="true"
+                        class="h-[75vh]" />
+                    <WordViewer v-else-if="isWordDocument(previewFile)"
+                        :file-id="previewFile.id"
+                        class="h-[75vh]" />
+                    <TextEditor v-else-if="isTextEditable(previewFile)"
+                        :file-id="previewFile.id"
+                        :can-edit="true"
+                        class="h-[75vh]" />
+                    <img v-else-if="isImage(previewFile.mime_type)"
                         :src="`/api/files/${previewFile.id}/preview`"
                         class="max-w-full max-h-[75vh] mx-auto rounded"
                         @load="previewLoading = false" @error="previewLoading = false" />
@@ -242,6 +273,9 @@
 import { ref, computed, nextTick, watch } from 'vue';
 import { Link, useForm, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import SpreadsheetEditor from '@/Components/SpreadsheetEditor.vue';
+import TextEditor from '@/Components/TextEditor.vue';
+import WordViewer from '@/Components/WordViewer.vue';
 import { marked } from 'marked';
 
 marked.setOptions({
@@ -341,6 +375,33 @@ function formatSize(bytes) {
 
 function isImage(mime) {
     return mime && mime.startsWith('image/');
+}
+
+function isSpreadsheet(file) {
+    if (!file) return false;
+    const mime = file.mime_type || '';
+    const ext = (file.original_name || '').split('.').pop()?.toLowerCase();
+    return mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('csv')
+        || ['xlsx', 'xls', 'csv'].includes(ext);
+}
+
+function isWordDocument(file) {
+    if (!file) return false;
+    const mime = file.mime_type || '';
+    const ext = (file.original_name || '').split('.').pop()?.toLowerCase();
+    return (mime.includes('word') || mime.includes('wordprocessingml') || mime.includes('document'))
+        && ['docx'].includes(ext);
+}
+
+function isTextEditable(file) {
+    if (!file) return false;
+    const mime = file.mime_type || '';
+    const ext = (file.original_name || '').split('.').pop()?.toLowerCase();
+    if (mime.startsWith('text/') || mime.includes('json')
+        || ['txt', 'md', 'log', 'xml', 'yaml', 'yml', 'json', 'env', 'ini', 'cfg', 'conf'].includes(ext)) {
+        return !['csv'].includes(ext);
+    }
+    return false;
 }
 
 function isPdf(mime) {

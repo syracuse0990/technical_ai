@@ -2,6 +2,9 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import FileTree from '@/Components/FileTree.vue';
 import FileIcon from '@/Components/FileIcon.vue';
+import SpreadsheetEditor from '@/Components/SpreadsheetEditor.vue';
+import TextEditor from '@/Components/TextEditor.vue';
+import WordViewer from '@/Components/WordViewer.vue';
 import { Head } from '@inertiajs/vue3';
 import { ref, computed, watch, inject, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
@@ -225,6 +228,33 @@ function isOffice(file) {
         || file.mime_type.includes('excel')
         || file.mime_type.includes('presentation')
         || file.mime_type.includes('powerpoint');
+}
+
+function isSpreadsheetFile(file) {
+    if (!file?.mime_type) return false;
+    const mime = file.mime_type;
+    const ext = (file.original_name || '').split('.').pop()?.toLowerCase();
+    return mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('csv')
+        || ['xlsx', 'xls', 'csv'].includes(ext);
+}
+
+function isWordDocument(file) {
+    if (!file?.mime_type) return false;
+    const mime = file.mime_type;
+    const ext = (file.original_name || '').split('.').pop()?.toLowerCase();
+    return (mime.includes('word') || mime.includes('wordprocessingml') || mime.includes('document'))
+        && ['docx'].includes(ext);
+}
+
+function isTextEditable(file) {
+    if (!file?.mime_type) return false;
+    const mime = file.mime_type;
+    const ext = (file.original_name || '').split('.').pop()?.toLowerCase();
+    if (mime.startsWith('text/') || mime.includes('json')
+        || ['txt', 'md', 'log', 'xml', 'yaml', 'yml', 'json', 'env', 'ini', 'cfg', 'conf'].includes(ext)) {
+        return !['csv'].includes(ext);
+    }
+    return false;
 }
 
 function isBinaryFile(file) {
@@ -592,6 +622,20 @@ onUnmounted(() => {
                                 Your browser does not support the audio tag.
                             </audio>
                         </div>
+
+                        <SpreadsheetEditor v-else-if="isSpreadsheetFile(selectedFile)"
+                            :file-id="selectedFile.id"
+                            :can-edit="true"
+                            class="h-full" />
+
+                        <WordViewer v-else-if="isWordDocument(selectedFile)"
+                            :file-id="selectedFile.id"
+                            class="h-full" />
+
+                        <TextEditor v-else-if="isTextEditable(selectedFile)"
+                            :file-id="selectedFile.id"
+                            :can-edit="true"
+                            class="h-full" />
 
                         <div v-else-if="isText(selectedFile) || isOffice(selectedFile)" class="h-full overflow-auto p-4">
                             <div v-if="previewLoading" class="flex items-center justify-center py-12">

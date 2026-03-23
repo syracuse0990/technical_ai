@@ -8,6 +8,11 @@ use App\Services\WebSocketService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpWord\Element\Table;
+use PhpOffice\PhpWord\IOFactory as WordIOFactory;
+use PhpOffice\PhpWord\PhpWord;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FileController extends Controller
@@ -114,6 +119,323 @@ class FileController extends Controller
             'text' => $chunks->implode("\n\n"),
             'chunks_count' => $chunks->count(),
         ]);
+    }
+
+    /**
+     * Return Excel/CSV file data as JSON for the spreadsheet editor.
+     */
+    public function spreadsheetData(Request $request, File $file): JsonResponse
+    {
+        if ($file->visibility !== 'public' && $file->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        $mime = $file->mime_type ?? '';
+        $ext = strtolower(pathinfo($file->original_name, PATHINFO_EXTENSION));
+
+        if (! $this->isSpreadsheetFile($mime, $ext)) {
+            return response()->json(['error' => 'Not a spreadsheet file'], 422);
+        }
+
+        $tmpFile = tempnam(sys_get_temp_dir(), 'xls_');
+
+        try {
+            $stream = Storage::disk('wasabi')->readStream($file->file_path);
+            file_put_contents($tmpFile, $stream);
+
+            $spreadsheet = IOFactory::load($tmpFile);
+            $sheets = [];
+
+            foreach ($spreadsheet->getAllSheets() as $sheet) {
+                $sheetData = $sheet->toArray(null, true, true, false);
+
+                // Determine column count from the widest row
+                $colCount = 0;
+                foreach ($sheetData as $row) {
+                    $colCount = max($colCount, is_array($row) ? count($row) : 0);
+                }
+
+                // Build column headers (A, B, C, ...)
+                $columns = [];
+                for ($i = 0; $i < max($colCount, 1); $i++) {
+                    $letter = '';
+                    $n = $i;
+                    do {
+                        $letter = chr(65 + ($n % 26)).$letter;
+                        $n = intdiv($n, 26) - 1;
+                    } while ($n >= 0);
+
+                    $columns[] = [
+                        'title' => $letter,
+                        'width' => 120,
+                    ];
+                }
+
+                // Normalize rows to consistent column count
+                $rows = [];
+                foreach ($sheetData as $row) {
+                    $normalized = array_pad(is_array($row) ? array_values($row) : [], $colCount, '');
+                    $rows[] = array_map(fn ($v) => $v === null ? '' : (string) $v, $normalized);
+                }
+
+                $sheets[] = [
+                    'name' => $sheet->getTitle(),
+                    'columns' => $columns,
+                    'data' => $rows,
+                ];
+            }
+
+            $spreadsheet->disconnectWorksheets();
+
+            return response()->json(['sheets' => $sheets]);
+        } finally {
+            @unlink($tmpFile);
+        }
+    }
+
+    /**
+     * Save edited spreadsheet data back to the file.
+     */
+    public function spreadsheetSave(Request $request, File $file): JsonResponse
+    {
+        if ($file->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        $request->validate([
+            'sheets' => ['required', 'array', 'min:1'],
+            'sheets.*.name' => ['required', 'string', 'max:255'],
+            'sheets.*.data' => ['required', 'array'],
+        ]);
+
+        $ext = strtolower(pathinfo($file->original_name, PATHINFO_EXTENSION));
+
+        $spreadsheet = new Spreadsheet;
+        $spreadsheet->removeSheetByIndex(0);
+
+        foreach ($request->input('sheets') as $i => $sheetInput) {
+            $sheet = $spreadsheet->createSheet($i);
+            $sheet->setTitle(mb_substr($sheetInput['name'], 0, 31));
+
+            foreach ($sheetInput['data'] as $rowIdx => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                foreach ($row as $colIdx => $value) {
+                    $sheet->setCellValue([$colIdx + 1, $rowIdx + 1], $value ?? '');
+                }
+            }
+        }
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        $writerType = match ($ext) {
+            'csv' => 'Csv',
+            'xls' => 'Xls',
+            default => 'Xlsx',
+        };
+
+        $tmpFile = tempnam(sys_get_temp_dir(), 'xls_save_');
+
+        try {
+            $writer = IOFactory::createWriter($spreadsheet, $writerType);
+            $writer->save($tmpFile);
+            $spreadsheet->disconnectWorksheets();
+
+            Storage::disk('wasabi')->put($file->file_path, file_get_contents($tmpFile));
+            $file->update(['file_size' => filesize($tmpFile)]);
+
+            // Re-process document to update chunks
+            $file->update(['status' => 'pending']);
+            $file->chunks()->delete();
+            ProcessDocument::dispatch($file);
+
+            return response()->json(['success' => true]);
+        } finally {
+            @unlink($tmpFile);
+        }
+    }
+
+    /**
+     * Check if a file is a spreadsheet type.
+     */
+    protected function isSpreadsheetFile(string $mime, string $ext): bool
+    {
+        return str_contains($mime, 'spreadsheet')
+            || str_contains($mime, 'excel')
+            || str_contains($mime, 'csv')
+            || in_array($ext, ['xlsx', 'xls', 'csv']);
+    }
+
+    /**
+     * Check if a file is an editable document (text or Word).
+     */
+    protected function isEditableDocument(string $mime, string $ext): bool
+    {
+        return $this->isTextFile($mime, $ext) || $this->isWordFile($mime, $ext);
+    }
+
+    protected function isTextFile(string $mime, string $ext): bool
+    {
+        return str_starts_with($mime, 'text/')
+            || str_contains($mime, 'json')
+            || in_array($ext, ['txt', 'md', 'log', 'xml', 'yaml', 'yml', 'json', 'env', 'ini', 'cfg', 'conf']);
+    }
+
+    protected function isWordFile(string $mime, string $ext): bool
+    {
+        return (str_contains($mime, 'word') || str_contains($mime, 'document'))
+            && ! str_contains($mime, 'spreadsheet')
+            && in_array($ext, ['docx', 'doc']);
+    }
+
+    /**
+     * Recursively extract text from a PhpWord element.
+     */
+    protected function extractWordElementText(mixed $element): string
+    {
+        // Handle Table elements
+        if ($element instanceof Table) {
+            $text = '';
+            foreach ($element->getRows() as $row) {
+                $cells = [];
+                foreach ($row->getCells() as $cell) {
+                    $cellText = '';
+                    foreach ($cell->getElements() as $cellElement) {
+                        $cellText .= $this->extractWordElementText($cellElement);
+                    }
+                    $cells[] = trim($cellText);
+                }
+                $text .= implode(' | ', $cells)."\n";
+            }
+
+            return $text;
+        }
+
+        $text = '';
+
+        if (method_exists($element, 'getText')) {
+            $result = $element->getText();
+            if (is_string($result)) {
+                return $result.' ';
+            }
+            if (is_object($result)) {
+                return $this->extractWordElementText($result);
+            }
+        }
+
+        if (method_exists($element, 'getElements')) {
+            foreach ($element->getElements() as $child) {
+                $text .= $this->extractWordElementText($child);
+            }
+        }
+
+        return $text;
+    }
+
+    /**
+     * Return document content for text/Word editing.
+     */
+    public function documentContent(Request $request, File $file): JsonResponse
+    {
+        if ($file->visibility !== 'public' && $file->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        $mime = $file->mime_type ?? '';
+        $ext = strtolower(pathinfo($file->original_name, PATHINFO_EXTENSION));
+
+        if (! $this->isEditableDocument($mime, $ext)) {
+            return response()->json(['error' => 'Not an editable document'], 422);
+        }
+
+        $tmpFile = tempnam(sys_get_temp_dir(), 'doc_');
+
+        try {
+            $stream = Storage::disk('wasabi')->readStream($file->file_path);
+            file_put_contents($tmpFile, $stream);
+
+            if ($this->isWordFile($mime, $ext)) {
+                $phpWord = WordIOFactory::load($tmpFile);
+                $content = '';
+
+                foreach ($phpWord->getSections() as $section) {
+                    foreach ($section->getElements() as $element) {
+                        $content .= $this->extractWordElementText($element)."\n";
+                    }
+                }
+
+                return response()->json([
+                    'content' => trim($content),
+                    'type' => 'word',
+                    'extension' => $ext,
+                ]);
+            }
+
+            // Plain text file
+            $content = file_get_contents($tmpFile);
+
+            return response()->json([
+                'content' => $content,
+                'type' => 'text',
+                'extension' => $ext,
+            ]);
+        } finally {
+            @unlink($tmpFile);
+        }
+    }
+
+    /**
+     * Save edited document content back to storage.
+     */
+    public function documentSave(Request $request, File $file): JsonResponse
+    {
+        if ($file->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        $request->validate([
+            'content' => ['required', 'string'],
+        ]);
+
+        $mime = $file->mime_type ?? '';
+        $ext = strtolower(pathinfo($file->original_name, PATHINFO_EXTENSION));
+
+        if (! $this->isEditableDocument($mime, $ext)) {
+            return response()->json(['error' => 'Not an editable document'], 422);
+        }
+
+        $tmpFile = tempnam(sys_get_temp_dir(), 'doc_save_');
+
+        try {
+            $content = $request->input('content');
+
+            if ($this->isWordFile($mime, $ext)) {
+                $phpWord = new PhpWord;
+                $section = $phpWord->addSection();
+
+                foreach (explode("\n", $content) as $line) {
+                    $section->addText(htmlspecialchars($line, ENT_XML1, 'UTF-8'));
+                }
+
+                $writer = WordIOFactory::createWriter($phpWord, 'Word2007');
+                $writer->save($tmpFile);
+            } else {
+                file_put_contents($tmpFile, $content);
+            }
+
+            Storage::disk('wasabi')->put($file->file_path, file_get_contents($tmpFile));
+            $file->update(['file_size' => filesize($tmpFile)]);
+
+            // Re-process document to update chunks
+            $file->update(['status' => 'pending']);
+            $file->chunks()->delete();
+            ProcessDocument::dispatch($file);
+
+            return response()->json(['success' => true]);
+        } finally {
+            @unlink($tmpFile);
+        }
     }
 
     /**

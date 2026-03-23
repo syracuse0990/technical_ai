@@ -38,6 +38,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/api/files/{file}/download', [FileController::class, 'download'])->name('files.download');
     Route::get('/api/files/{file}/preview', [FileController::class, 'preview'])->name('files.preview');
     Route::get('/api/files/{file}/content', [FileController::class, 'content'])->name('files.content');
+    Route::get('/api/files/{file}/spreadsheet', [FileController::class, 'spreadsheetData'])->name('files.spreadsheet');
+    Route::put('/api/files/{file}/spreadsheet', [FileController::class, 'spreadsheetSave'])->name('files.spreadsheet.save');
+    Route::get('/api/files/{file}/document', [FileController::class, 'documentContent'])->name('files.document');
+    Route::put('/api/files/{file}/document', [FileController::class, 'documentSave'])->name('files.document.save');
     Route::patch('/api/files/{file}/move', [FileController::class, 'move'])->name('files.move');
     Route::patch('/api/files/{file}/rename', [FileController::class, 'rename'])->name('files.rename');
     Route::delete('/api/files/{file}', [FileController::class, 'destroy'])->name('files.destroy');

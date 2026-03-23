@@ -21,6 +21,9 @@
         "vue": "^3.4.0"
     },
     "dependencies": {
+        "docx-preview": "^0.3.7",
+        "jspreadsheet-ce": "^5.0.4",
+        "jsuites": "^5.13.5",
         "marked": "^17.0.5",
         "pinia": "^3.0.4",
         "pinia-plugin-persistedstate": "^4.7.1",
