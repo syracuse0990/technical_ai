@@ -82,7 +82,7 @@ class ChatController extends Controller
             'content' => $validated['message'],
         ]);
 
-        $results = $vectorSearch->search($validated['message']);
+        $results = $vectorSearch->search($validated['message'], null, $request->user()->id);
 
         Log::info('Chat search results', [
             'conversation_id' => $conversation->id,
@@ -163,7 +163,7 @@ class ChatController extends Controller
             $matchedFiles = $this->searchFiles($validated['message'], $request->user()->id);
         }
 
-        $results = $vectorSearch->search($validated['message']);
+        $results = $vectorSearch->search($validated['message'], null, $request->user()->id);
 
         Log::info('Chat stream search results', [
             'conversation_id' => $conversation->id,

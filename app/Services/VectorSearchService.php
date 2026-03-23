@@ -24,7 +24,7 @@ class VectorSearchService
      *
      * @return array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>
      */
-    public function search(string $query, ?int $topicId = null): array
+    public function search(string $query, ?int $topicId = null, ?int $userId = null): array
     {
         $englishQuery = $this->translateForSearch($query);
         $searchQuery = $englishQuery ?: $query;
@@ -41,11 +41,11 @@ class VectorSearchService
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->keywordFallbackSearch($keywords, $topicId);
+            return $this->keywordFallbackSearch($keywords, $topicId, $userId);
         }
 
         try {
-            $results = $this->hybridSearch($queryEmbedding, $keywords, $topicId);
+            $results = $this->hybridSearch($queryEmbedding, $keywords, $topicId, $userId);
         } catch (\Exception $e) {
             Log::warning('Hybrid search failed (pgvector may not be installed), using keyword fallback', [
                 'error' => $e->getMessage(),
@@ -56,7 +56,7 @@ class VectorSearchService
         // Always supplement with keyword search for ALL chunks (catches filename matches
         // + chunks without embeddings that hybrid search skips)
         $keywordResults = ! empty($keywords)
-            ? $this->keywordFallbackSearch($keywords, $topicId)
+            ? $this->keywordFallbackSearch($keywords, $topicId, $userId)
             : [];
 
         if (empty($results) && empty($keywordResults) && ! empty($keywords)) {
@@ -138,7 +138,7 @@ class VectorSearchService
     /**
      * @return array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>
      */
-    protected function hybridSearch(array $queryEmbedding, array $keywords, ?int $topicId = null): array
+    protected function hybridSearch(array $queryEmbedding, array $keywords, ?int $topicId = null, ?int $userId = null): array
     {
         $vectorParam = '['.implode(',', $queryEmbedding).']';
 
@@ -170,6 +170,12 @@ class VectorSearchService
                 WHERE dc.embedding IS NOT NULL
         ";
 
+        if ($userId) {
+            $sql .= ' AND (f.user_id = ? OR f.visibility = ?)';
+            $bindings[] = $userId;
+            $bindings[] = 'public';
+        }
+
         if ($topicId) {
             $sql .= ' AND dc.topic_id = ?';
             $bindings[] = $topicId;
@@ -198,7 +204,7 @@ class VectorSearchService
     /**
      * @return array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>
      */
-    protected function keywordFallbackSearch(array $keywords, ?int $topicId = null): array
+    protected function keywordFallbackSearch(array $keywords, ?int $topicId = null, ?int $userId = null): array
     {
         if (empty($keywords)) {
             return [];
@@ -251,6 +257,12 @@ class VectorSearchService
             LEFT JOIN files f ON f.id = dc.file_id
             WHERE (".implode(' OR ', $whereParts).')
         ';
+
+        if ($userId) {
+            $sql .= ' AND (f.user_id = ? OR f.visibility = ?)';
+            $bindings[] = $userId;
+            $bindings[] = 'public';
+        }
 
         if ($topicId) {
             $sql .= ' AND dc.topic_id = ?';
