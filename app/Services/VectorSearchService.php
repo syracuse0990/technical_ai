@@ -53,14 +53,14 @@ class VectorSearchService
             $results = [];
         }
 
-        // Always supplement with keyword search for chunks that have no embeddings
+        // Always supplement with keyword search for ALL chunks (catches filename matches
+        // + chunks without embeddings that hybrid search skips)
         $keywordResults = ! empty($keywords)
-            ? $this->keywordFallbackSearch($keywords, $topicId, true)
+            ? $this->keywordFallbackSearch($keywords, $topicId)
             : [];
 
-        if (empty($results) && ! empty($keywords)) {
-            Log::info('Vector search empty, trying keyword fallback', ['keywords' => $keywords]);
-            $keywordResults = array_merge($keywordResults, $this->keywordFallbackSearch($keywords, $topicId, false));
+        if (empty($results) && empty($keywordResults) && ! empty($keywords)) {
+            Log::info('Both vector and keyword search empty', ['keywords' => $keywords]);
         }
 
         // Merge: add keyword results that aren't already in vector results
@@ -198,46 +198,66 @@ class VectorSearchService
     /**
      * @return array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>
      */
-    protected function keywordFallbackSearch(array $keywords, ?int $topicId = null, bool $embeddingNullOnly = false): array
+    protected function keywordFallbackSearch(array $keywords, ?int $topicId = null): array
     {
         if (empty($keywords)) {
             return [];
         }
 
         $bindings = [];
-        $whereParts = [];
-
-        foreach ($keywords as $kw) {
-            $whereParts[] = 'LOWER(dc.content) LIKE ?';
-            $bindings[] = '%'.str_replace(['%', '_'], ['\%', '\_'], $kw).'%';
-        }
-
-        // Also match by filename
+        $contentParts = [];
         $fileNameParts = [];
+
         foreach ($keywords as $kw) {
-            $fileNameParts[] = 'LOWER(f.original_name) LIKE ?';
-            $bindings[] = '%'.str_replace(['%', '_'], ['\%', '\_'], $kw).'%';
+            $escaped = str_replace(['%', '_'], ['\%', '\_'], $kw);
+            $contentParts[] = 'CASE WHEN LOWER(dc.content) LIKE ? THEN 1 ELSE 0 END';
+            $bindings[] = '%'.$escaped.'%';
         }
 
-        $sql = '
+        foreach ($keywords as $kw) {
+            $escaped = str_replace(['%', '_'], ['\%', '\_'], $kw);
+            $fileNameParts[] = 'CASE WHEN LOWER(f.original_name) LIKE ? THEN 1 ELSE 0 END';
+            $bindings[] = '%'.$escaped.'%';
+        }
+
+        // Score: filename matches weighted higher (0.2) vs content matches (0.4)
+        // Lower score = better match (consistent with vector distance)
+        $contentScore = implode(' + ', $contentParts);
+        $fileNameScore = implode(' + ', $fileNameParts);
+        $kwCount = count($keywords);
+
+        // Build WHERE clause: content OR filename match
+        $whereBindings = [];
+        $whereParts = [];
+        foreach ($keywords as $kw) {
+            $escaped = str_replace(['%', '_'], ['\%', '\_'], $kw);
+            $whereParts[] = 'LOWER(dc.content) LIKE ?';
+            $whereBindings[] = '%'.$escaped.'%';
+        }
+        foreach ($keywords as $kw) {
+            $escaped = str_replace(['%', '_'], ['\%', '\_'], $kw);
+            $whereParts[] = 'LOWER(f.original_name) LIKE ?';
+            $whereBindings[] = '%'.$escaped.'%';
+        }
+
+        // Merge all bindings: score bindings first, then WHERE bindings
+        $bindings = array_merge($bindings, $whereBindings);
+
+        $sql = "
             SELECT dc.id, dc.file_id, dc.content, dc.chunk_index, dc.metadata,
                    f.original_name AS source_name,
-                   0.5 AS combined_score
+                   (0.5 - (0.1 * ({$contentScore}) / {$kwCount}) - (0.2 * ({$fileNameScore}) / {$kwCount})) AS combined_score
             FROM document_chunks dc
             LEFT JOIN files f ON f.id = dc.file_id
-            WHERE ('.implode(' OR ', array_merge($whereParts, $fileNameParts)).')
+            WHERE (".implode(' OR ', $whereParts).')
         ';
-
-        if ($embeddingNullOnly) {
-            $sql .= ' AND dc.embedding IS NULL';
-        }
 
         if ($topicId) {
             $sql .= ' AND dc.topic_id = ?';
             $bindings[] = $topicId;
         }
 
-        $sql .= ' ORDER BY dc.id ASC LIMIT ?';
+        $sql .= ' ORDER BY combined_score ASC LIMIT ?';
         $bindings[] = $this->topK;
 
         $results = DB::select($sql, $bindings);
