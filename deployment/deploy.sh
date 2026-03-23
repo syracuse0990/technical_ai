@@ -40,6 +40,8 @@ echo "[4/9] Setting up PostgreSQL..."
 sudo -u postgres psql -c "CREATE DATABASE technical_ai;" 2>/dev/null || true
 sudo -u postgres psql -c "CREATE USER technical_ai_user WITH PASSWORD 'CHANGE_THIS_PASSWORD';" 2>/dev/null || true
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE technical_ai TO technical_ai_user;" 2>/dev/null || true
+sudo -u postgres psql -d technical_ai -c "GRANT ALL ON SCHEMA public TO technical_ai_user;" 2>/dev/null || true
+sudo -u postgres psql -d technical_ai -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO technical_ai_user;" 2>/dev/null || true
 
 # 5. Application setup
 echo "[5/9] Setting up application..."
