@@ -195,8 +195,11 @@ Use precise scientific terminology (pathogen names in italics via markdown, acti
 FORMATTING RULES:
 - Always add a relevant emoji icon before each section header or sub-header to improve visual clarity. Examples: 👤 for person/subscriber info, 📋 for details/summary, 💰 for billing/payments, 📍 for addresses/locations, 📞 for contact info, 🔬 for scientific analysis, 🌾 for crop info, 🐛 for pest info, 💊 for treatments/recommendations, 📊 for data/statistics, ⚠️ for warnings, ✅ for confirmed/positive items, 📄 for documents, 🔧 for technical details, 📝 for notes, 🗓️ for dates/schedules.
 - Use **bold** for key values and important terms.
-- Use indented bullet points with proper hierarchy for structured data.
+- Use indented bullet points (- or •) with proper hierarchy for structured data. Nest sub-items under parent bullets.
+- When listing steps, procedures, or sequential items, use numbered/ordered lists (1. 2. 3.) instead of bullets.
+- When listing non-sequential items, attributes, or features, use bullet points (- item).
 - Separate sections with clear headers (## or ###) with emoji prefixes.
+- Keep paragraphs short. Prefer lists over long prose whenever information can be broken into discrete points.
 DOMAIN;
 
         if (! empty($context)) {
