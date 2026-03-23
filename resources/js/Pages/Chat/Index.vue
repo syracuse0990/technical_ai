@@ -74,6 +74,7 @@
                             <!-- User message -->
                             <div v-if="msg.role === 'user'" class="flex justify-end">
                                 <div class="max-w-[75%] rounded-2xl rounded-br-md bg-agri-600 px-4 py-2.5 text-[14px] text-white leading-relaxed shadow-sm">
+                                    <img v-if="msg.imagePreview" :src="msg.imagePreview" class="mb-2 max-h-40 rounded-lg border border-white/20" />
                                     <div class="whitespace-pre-wrap">{{ msg.content }}</div>
                                 </div>
                             </div>
@@ -160,12 +161,29 @@
                 <!-- Input -->
                 <div v-if="activeConversation" class="border-t border-gray-100 bg-white px-4 py-3 dark:border-gray-800/60 dark:bg-gray-950">
                     <form @submit.prevent="sendMessage" class="max-w-3xl mx-auto">
+                        <!-- Image preview -->
+                        <div v-if="attachedImagePreview" class="mb-2 flex items-start gap-2">
+                            <div class="relative inline-block">
+                                <img :src="attachedImagePreview" class="h-20 w-20 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
+                                <button type="button" @click="removeAttachedImage"
+                                    class="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs hover:bg-red-600 shadow-sm">
+                                    &times;
+                                </button>
+                            </div>
+                            <span class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ attachedImage?.name }}</span>
+                        </div>
                         <div class="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50/80 px-3 py-2 transition-all focus-within:border-agri-400 focus-within:bg-white focus-within:shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:focus-within:border-agri-600 dark:focus-within:bg-gray-900">
+                            <input ref="imageInputRef" type="file" accept="image/*" class="hidden" @change="handleImageSelect" />
+                            <button type="button" @click="imageInputRef?.click()" :disabled="isLoading"
+                                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-gray-400 transition-all hover:text-agri-600 hover:bg-gray-100 dark:hover:text-agri-400 dark:hover:bg-gray-800 disabled:opacity-30"
+                                title="Attach image">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+                            </button>
                             <input v-model="messageInput" type="text" placeholder="Message..."
                                 :disabled="isLoading"
                                 class="flex-1 border-0 bg-transparent px-1 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0 disabled:opacity-50 dark:text-white dark:placeholder-gray-500"
                                 @keydown.enter.prevent="sendMessage" />
-                            <button type="submit" :disabled="!messageInput.trim() || isLoading"
+                            <button type="submit" :disabled="(!messageInput.trim() && !attachedImage) || isLoading"
                                 class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-agri-600 text-white transition-all hover:bg-agri-700 active:scale-95 disabled:opacity-30 disabled:hover:bg-agri-600">
                                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
                             </button>
@@ -328,6 +346,9 @@ const streamingMessage = ref(null);
 const streamingFiles = ref([]);
 const messagesContainer = ref(null);
 const localMessages = ref([]);
+const attachedImage = ref(null);
+const attachedImagePreview = ref(null);
+const imageInputRef = ref(null);
 const confirmDelete = ref(null);
 const copiedId = ref(null);
 const showSystemPrompt = ref(false);
@@ -501,18 +522,42 @@ async function saveSystemPrompt() {
     }
 }
 
+function handleImageSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 10 * 1024 * 1024) return; // 10MB max
+    attachedImage.value = file;
+    attachedImagePreview.value = URL.createObjectURL(file);
+}
+
+function removeAttachedImage() {
+    if (attachedImagePreview.value) URL.revokeObjectURL(attachedImagePreview.value);
+    attachedImage.value = null;
+    attachedImagePreview.value = null;
+    if (imageInputRef.value) imageInputRef.value.value = '';
+}
+
 async function sendMessage() {
     const message = messageInput.value.trim();
-    if (!message || isLoading.value || !props.activeConversation) return;
+    if ((!message && !attachedImage.value) || isLoading.value || !props.activeConversation) return;
+
+    const pendingMessage = message || 'Analyze this image';
+    const pendingImage = attachedImage.value;
+    const pendingPreview = attachedImagePreview.value;
 
     messageInput.value = '';
+    attachedImage.value = null;
+    attachedImagePreview.value = null;
+    if (imageInputRef.value) imageInputRef.value.value = '';
     isLoading.value = true;
     streamingFiles.value = [];
 
     localMessages.value.push({
         tempId: Date.now(),
         role: 'user',
-        content: message,
+        content: pendingMessage,
+        imagePreview: pendingPreview || null,
     });
 
     await nextTick();
@@ -527,16 +572,28 @@ async function sendMessage() {
     };
 
     try {
+        const headers = {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content
+                || document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1]
+                || '',
+            'Accept': 'text/event-stream',
+        };
+
+        let body;
+        if (pendingImage) {
+            const formData = new FormData();
+            formData.append('message', pendingMessage);
+            formData.append('image', pendingImage);
+            body = formData;
+        } else {
+            headers['Content-Type'] = 'application/json';
+            body = JSON.stringify({ message: pendingMessage });
+        }
+
         const response = await fetch(`/chat/${props.activeConversation.id}/stream`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content
-                    || document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1]
-                    || '',
-                'Accept': 'text/event-stream',
-            },
-            body: JSON.stringify({ message }),
+            headers,
+            body,
         });
 
         const reader = response.body.getReader();
@@ -584,7 +641,7 @@ async function sendMessage() {
 
         try {
             const formData = new FormData();
-            formData.append('message', message);
+            formData.append('message', pendingMessage);
 
             const resp = await fetch(`/chat/${props.activeConversation.id}/message`, {
                 method: 'POST',

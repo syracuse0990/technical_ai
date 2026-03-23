@@ -6,6 +6,7 @@ use App\Models\Conversation;
 use App\Models\File;
 use App\Models\Message;
 use App\Services\DeepSeekService;
+use App\Services\KimiService;
 use App\Services\VectorSearchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -128,12 +129,32 @@ class ChatController extends Controller
 
         $validated = $request->validate([
             'message' => 'required|string|max:5000',
+            'image' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp', 'max:10240'],
         ]);
 
         $conversation->messages()->create([
             'role' => 'user',
             'content' => $validated['message'],
         ]);
+
+        // Analyze image via KIMI vision if attached
+        $imageAnalysis = null;
+        if ($request->hasFile('image')) {
+            try {
+                $kimiService = app(KimiService::class);
+                $imageAnalysis = $kimiService->analyzeImage($request->file('image')->getRealPath());
+
+                Log::info('Image analyzed via KIMI vision', [
+                    'conversation_id' => $conversation->id,
+                    'image_name' => $request->file('image')->getClientOriginalName(),
+                    'analysis_length' => mb_strlen($imageAnalysis),
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('KIMI image analysis failed in chat', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         $isFileSearch = $this->isFileSearchIntent($validated['message']);
         $matchedFiles = [];
@@ -169,6 +190,10 @@ class ChatController extends Controller
             : [];
 
         $context = array_map(fn ($r) => "[Source: {$r['source']}]\n{$r['content']}", $results);
+
+        if ($imageAnalysis) {
+            array_unshift($context, "[Attached Image Analysis]\n{$imageAnalysis}");
+        }
 
         if ($isFileSearch && ! empty($matchedFiles)) {
             $fileList = array_map(
