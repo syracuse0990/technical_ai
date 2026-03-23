@@ -28,7 +28,7 @@ class ProcessDocument implements ShouldQueue
 
     public function __construct(protected File $file)
     {
-        $this->onQueue('default');
+        $this->onQueue('training');
     }
 
     public function handle(
