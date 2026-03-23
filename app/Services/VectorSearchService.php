@@ -8,19 +8,21 @@ use Illuminate\Support\Facades\Log;
 
 class VectorSearchService
 {
-    protected int $topK;
+    protected int $retrieveK;
+
+    protected int $finalK;
 
     protected float $threshold;
 
     public function __construct(protected EmbeddingService $embeddingService)
     {
-        $this->topK = config('ai.search_top_k', 8);
-        $this->threshold = config('ai.similarity_threshold', 0.65);
+        $this->retrieveK = config('ai.search_retrieve_k', 20);
+        $this->finalK = config('ai.search_top_k', 12);
+        $this->threshold = config('ai.similarity_threshold', 0.85);
     }
 
     /**
-     * Hybrid search: pgvector cosine distance + keyword boost.
-     * Falls back to keyword-only search if vector search returns nothing.
+     * Advanced RAG search: multi-query expansion → hybrid retrieval → neighbor expansion → AI reranking.
      *
      * @return array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>
      */
@@ -34,53 +36,231 @@ class VectorSearchService
             $keywords = array_unique(array_merge($keywords, $this->extractKeywords($englishQuery)));
         }
 
-        try {
-            $queryEmbedding = $this->embeddingService->embed($searchQuery);
-        } catch (\Exception $e) {
-            Log::warning('Embedding failed for search query, trying keyword-only fallback', [
-                'error' => $e->getMessage(),
-            ]);
+        // Step 1: Multi-query expansion — generate alternative search angles
+        $searchQueries = $this->expandQueries($searchQuery);
 
-            return $this->keywordFallbackSearch($keywords, $topicId, $userId);
+        // Step 2: Retrieve candidates from all query variants
+        $allResults = [];
+        $seenKeys = [];
+
+        foreach ($searchQueries as $sq) {
+            try {
+                $embedding = $this->embeddingService->embed($sq);
+                $results = $this->hybridSearch($embedding, $keywords, $topicId, $userId);
+                foreach ($results as $r) {
+                    $key = $r['file_id'].'-'.$r['chunk_index'];
+                    if (! isset($seenKeys[$key])) {
+                        $allResults[] = $r;
+                        $seenKeys[$key] = true;
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::debug('Search query variant failed', ['query' => $sq, 'error' => $e->getMessage()]);
+            }
         }
 
-        try {
-            $results = $this->hybridSearch($queryEmbedding, $keywords, $topicId, $userId);
-        } catch (\Exception $e) {
-            Log::warning('Hybrid search failed (pgvector may not be installed), using keyword fallback', [
-                'error' => $e->getMessage(),
-            ]);
-            $results = [];
-        }
-
-        // Always supplement with keyword search for ALL chunks (catches filename matches
-        // + chunks without embeddings that hybrid search skips)
-        $keywordResults = ! empty($keywords)
-            ? $this->keywordFallbackSearch($keywords, $topicId, $userId)
-            : [];
-
-        if (empty($results) && empty($keywordResults) && ! empty($keywords)) {
-            Log::info('Both vector and keyword search empty', ['keywords' => $keywords]);
-        }
-
-        // Merge: add keyword results that aren't already in vector results
-        if (! empty($keywordResults)) {
-            $existingChunkIds = array_column($results, 'chunk_index');
-            $existingFileIds = array_column($results, 'file_id');
-            $existingKeys = array_map(fn ($r) => $r['file_id'].'-'.$r['chunk_index'], $results);
-
+        // Step 3: Keyword fallback for all chunks (catches filename matches + non-embedded chunks)
+        if (! empty($keywords)) {
+            $keywordResults = $this->keywordFallbackSearch($keywords, $topicId, $userId);
             foreach ($keywordResults as $kr) {
                 $key = $kr['file_id'].'-'.$kr['chunk_index'];
-                if (! in_array($key, $existingKeys)) {
-                    $results[] = $kr;
-                    $existingKeys[] = $key;
+                if (! isset($seenKeys[$key])) {
+                    $allResults[] = $kr;
+                    $seenKeys[$key] = true;
                 }
             }
+        }
 
-            $results = array_slice($results, 0, $this->topK);
+        if (empty($allResults)) {
+            Log::info('All search strategies returned empty', ['query' => $query, 'keywords' => $keywords]);
+
+            return [];
+        }
+
+        // Step 4: Expand with neighboring chunks for context continuity
+        $allResults = $this->expandWithNeighbors($allResults, $userId);
+
+        // Step 5: AI reranking — use DeepSeek to score relevance
+        $reranked = $this->rerankWithAI($query, $allResults);
+
+        Log::info('Search pipeline complete', [
+            'query' => $query,
+            'candidates' => count($allResults),
+            'after_rerank' => count($reranked),
+        ]);
+
+        return $reranked;
+    }
+
+    /**
+     * Generate alternative search queries to catch different phrasings.
+     *
+     * @return string[]
+     */
+    protected function expandQueries(string $query): array
+    {
+        $queries = [$query];
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.config('ai.deepseek_api_key'),
+                'Content-Type' => 'application/json',
+            ])->timeout(15)->post(config('ai.deepseek_base_url').'/chat/completions', [
+                'model' => config('ai.deepseek_model'),
+                'messages' => [
+                    ['role' => 'system', 'content' => 'Generate 3 alternative search queries for a document retrieval system. Each should approach the topic from a different angle or use different keywords. Return ONLY the 3 queries, one per line, no numbering or bullets.'],
+                    ['role' => 'user', 'content' => $query],
+                ],
+                'temperature' => 0.7,
+                'max_tokens' => 200,
+            ]);
+
+            if ($response->successful()) {
+                $lines = array_filter(
+                    array_map('trim', explode("\n", $response->json('choices.0.message.content', ''))),
+                    fn ($l) => mb_strlen($l) > 5
+                );
+                $queries = array_merge($queries, array_slice($lines, 0, 3));
+            }
+        } catch (\Exception $e) {
+            Log::debug('Query expansion failed, using original only', ['error' => $e->getMessage()]);
+        }
+
+        return array_unique($queries);
+    }
+
+    /**
+     * Expand results with neighboring chunks (chunk_index ± 1) for context continuity.
+     *
+     * @param  array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>  $results
+     * @return array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>
+     */
+    protected function expandWithNeighbors(array $results, ?int $userId = null): array
+    {
+        if (empty($results)) {
+            return [];
+        }
+
+        $neighborPairs = [];
+        $existingKeys = [];
+        foreach ($results as $r) {
+            $existingKeys[$r['file_id'].'-'.$r['chunk_index']] = true;
+            $neighborPairs[] = ['file_id' => $r['file_id'], 'chunk_index' => $r['chunk_index'] - 1];
+            $neighborPairs[] = ['file_id' => $r['file_id'], 'chunk_index' => $r['chunk_index'] + 1];
+        }
+
+        // Filter out neighbors we already have
+        $neighborPairs = array_filter(
+            $neighborPairs,
+            fn ($p) => $p['chunk_index'] >= 0 && ! isset($existingKeys[$p['file_id'].'-'.$p['chunk_index']])
+        );
+
+        if (empty($neighborPairs)) {
+            return $results;
+        }
+
+        // Build query for neighbors
+        $whereClauses = [];
+        $bindings = [];
+        foreach ($neighborPairs as $pair) {
+            $whereClauses[] = '(dc.file_id = ? AND dc.chunk_index = ?)';
+            $bindings[] = $pair['file_id'];
+            $bindings[] = $pair['chunk_index'];
+        }
+
+        $sql = '
+            SELECT dc.id, dc.file_id, dc.content, dc.chunk_index, dc.metadata,
+                   f.original_name AS source_name
+            FROM document_chunks dc
+            LEFT JOIN files f ON f.id = dc.file_id
+            WHERE ('.implode(' OR ', $whereClauses).')
+        ';
+
+        if ($userId) {
+            $sql .= ' AND (f.user_id = ? OR f.visibility = ?)';
+            $bindings[] = $userId;
+            $bindings[] = 'public';
+        }
+
+        $neighbors = DB::select($sql, $bindings);
+
+        foreach ($neighbors as $n) {
+            $key = $n->file_id.'-'.$n->chunk_index;
+            if (! isset($existingKeys[$key])) {
+                $results[] = [
+                    'content' => $n->content,
+                    'distance' => 0.9,
+                    'file_id' => $n->file_id,
+                    'chunk_index' => $n->chunk_index,
+                    'source' => $n->source_name ?? 'Unknown',
+                ];
+                $existingKeys[$key] = true;
+            }
         }
 
         return $results;
+    }
+
+    /**
+     * Use DeepSeek to rerank candidates by relevance to the query.
+     *
+     * @param  array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>  $candidates
+     * @return array<int, array{content: string, distance: float, file_id: int, chunk_index: int, source: string}>
+     */
+    protected function rerankWithAI(string $query, array $candidates): array
+    {
+        if (count($candidates) <= $this->finalK) {
+            return $candidates;
+        }
+
+        // Prepare numbered passages for the reranker
+        $passages = [];
+        foreach ($candidates as $i => $c) {
+            $preview = mb_substr($c['content'], 0, 300);
+            $passages[] = "[{$i}] (Source: {$c['source']}) {$preview}";
+        }
+
+        $passageText = implode("\n\n", $passages);
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.config('ai.deepseek_api_key'),
+                'Content-Type' => 'application/json',
+            ])->timeout(20)->post(config('ai.deepseek_base_url').'/chat/completions', [
+                'model' => config('ai.deepseek_model'),
+                'messages' => [
+                    ['role' => 'system', 'content' => "You are a relevance scoring assistant. Given a user query and numbered document passages, return the indices of the {$this->finalK} most relevant passages in order of relevance. Return ONLY the indices as comma-separated numbers (e.g., 3,0,7,2,5,1,4,9,6,8). No explanations."],
+                    ['role' => 'user', 'content' => "Query: {$query}\n\nPassages:\n{$passageText}"],
+                ],
+                'temperature' => 0.0,
+                'max_tokens' => 100,
+            ]);
+
+            if ($response->successful()) {
+                $content = trim($response->json('choices.0.message.content', ''));
+                // Extract numbers from response
+                preg_match_all('/\d+/', $content, $matches);
+                $indices = array_map('intval', $matches[0] ?? []);
+                $indices = array_filter($indices, fn ($i) => $i >= 0 && $i < count($candidates));
+                $indices = array_unique($indices);
+
+                if (count($indices) >= 3) {
+                    $reranked = [];
+                    foreach (array_slice($indices, 0, $this->finalK) as $idx) {
+                        $reranked[] = $candidates[$idx];
+                    }
+
+                    return $reranked;
+                }
+            }
+        } catch (\Exception $e) {
+            Log::debug('AI reranking failed, using distance-sorted fallback', ['error' => $e->getMessage()]);
+        }
+
+        // Fallback: sort by distance and take top finalK
+        usort($candidates, fn ($a, $b) => $a['distance'] <=> $b['distance']);
+
+        return array_slice($candidates, 0, $this->finalK);
     }
 
     protected function translateForSearch(string $query): ?string
@@ -188,7 +368,7 @@ class VectorSearchService
             LIMIT ?
         ';
         $bindings[] = $this->threshold;
-        $bindings[] = $this->topK;
+        $bindings[] = $this->retrieveK;
 
         $results = DB::select($sql, $bindings);
 
@@ -270,7 +450,7 @@ class VectorSearchService
         }
 
         $sql .= ' ORDER BY combined_score ASC LIMIT ?';
-        $bindings[] = $this->topK;
+        $bindings[] = $this->retrieveK;
 
         $results = DB::select($sql, $bindings);
 

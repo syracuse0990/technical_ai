@@ -94,7 +94,7 @@ class ChatController extends Controller
 
         $history = $conversation->messages()
             ->orderBy('created_at', 'desc')
-            ->limit(10)
+            ->limit(20)
             ->get(['role', 'content'])
             ->reverse()
             ->values()
@@ -205,7 +205,7 @@ class ChatController extends Controller
 
         $history = $conversation->messages()
             ->orderBy('created_at', 'desc')
-            ->limit(10)
+            ->limit(20)
             ->get(['role', 'content'])
             ->reverse()
             ->values()

@@ -38,8 +38,8 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'chunk_size' => env('CHUNK_SIZE', 250),
-    'chunk_overlap' => env('CHUNK_OVERLAP', 40),
+    'chunk_size' => env('CHUNK_SIZE', 500),
+    'chunk_overlap' => env('CHUNK_OVERLAP', 100),
 
     /*
     |--------------------------------------------------------------------------
@@ -47,7 +47,8 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    'search_top_k' => env('SEARCH_TOP_K', 8),
-    'similarity_threshold' => env('SIMILARITY_THRESHOLD', 0.65),
+    'search_retrieve_k' => env('SEARCH_RETRIEVE_K', 20),
+    'search_top_k' => env('SEARCH_TOP_K', 12),
+    'similarity_threshold' => env('SIMILARITY_THRESHOLD', 0.85),
 
 ];

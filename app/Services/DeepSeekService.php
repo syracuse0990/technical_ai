@@ -206,7 +206,17 @@ DOMAIN;
             $contextText = implode("\n\n---\n\n", $context);
             $messages[] = [
                 'role' => 'system',
-                'content' => $baseInstruction.$domainExpertise."\n\nAnswer based on the provided document context. Cite the source document name when referencing specific information. When listing files or sources, format each as: **📄 filename** so the system can link them.\n\nDocument Context:\n{$contextText}",
+                'content' => $baseInstruction.$domainExpertise."\n\n"
+                    ."ACCURACY INSTRUCTIONS:\n"
+                    ."- You are provided with multiple document chunks as context. Read ALL of them carefully before answering.\n"
+                    ."- Cross-reference information across multiple sources when available. If sources contradict, note the discrepancy.\n"
+                    ."- ALWAYS cite the source document name when referencing specific information. Format: **📄 filename**\n"
+                    ."- If the context contains the answer, extract it precisely — do not paraphrase loosely.\n"
+                    ."- If the context only partially answers the question, clearly state what you found AND what is missing.\n"
+                    ."- If the context does NOT contain the answer, say so explicitly. Do NOT fabricate information.\n"
+                    ."- When asked about a specific file/image, focus your answer on chunks from that source.\n"
+                    ."- Include relevant numbers, dates, names, and specific details from the documents — precision matters.\n"
+                    ."\nDocument Context:\n{$contextText}",
             ];
         } else {
             $messages[] = [
